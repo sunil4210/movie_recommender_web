@@ -1156,7 +1156,7 @@ class _MovieDetailsPageState extends ConsumerState<MovieDetailsPage> {
       body = SizedBox(
         height: 280,
         child: ListView.separated(
-          scrollCacheExtent: ScrollCacheExtent.pixels(600),
+          cacheExtent: 600,
           scrollDirection: Axis.horizontal,
           itemCount: _similar.length,
           separatorBuilder: (_, __) => const SizedBox(width: 14),
