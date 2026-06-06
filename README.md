@@ -8,10 +8,12 @@ A Flutter web application for personalized movie recommendations, powered by a U
 - **Dedicated Recommendations Tab** - Full-grid view of personalized picks
 - **Time-Based Greeting** - "Good morning/afternoon/evening, {first name}" on home
 - **Search & Filter** - Search movies by title and filter by genre (selected genre is shown on each result card)
-- **Movie Details** - View movie info, ratings, and similar movies
+- **Movie Details** - View movie info, ratings, similar movies, and the first 5 user reviews
 - **Rate Movies** - Rate movies (1-5 stars) to improve recommendations
+- **Reviews** - Write an optional comment with each rating; details page shows a "Your Rating" card with Edit; full reviews list with sort (newest/oldest/highest/lowest) lives at `/movie/:movieId/reviews` and pins the viewer's own review at the top
 - **Favorites** - Save and manage favorite movies; "MY LIST" button on home routes here
 - **User Profiles** - First name + last name + email registration (no username); profile edit + change password
+- **Email OTP Auth** - Signup requires email verification via a 6-digit code; "Forgot password" flow uses the same OTP screen to reset the password
 - **Onboarding** - New user onboarding flow to collect initial ratings
 - **Responsive UI** - Material Design with custom theming
 
@@ -105,15 +107,15 @@ movie_recommender_web/
 │   │   ├── extensions/             # Context, string, theme extensions
 │   │   ├── components/             # Reusable UI (buttons, forms, dialogs)
 │   │   └── router/                 # GoRouter config with auth guards
-│   ├── models/                     # Data models (Movie, User, Rating)
+│   ├── models/                     # Data models (Movie, User, Rating, MovieReview)
 │   ├── notifiers/                  # Riverpod state management
 │   │   ├── auth/                   # Auth state and notifier
 │   │   ├── movie/                  # Movie state and notifier
 │   │   └── favorites/              # Favorites state and notifier
 │   ├── pages/                      # Feature screens
-│   │   ├── auth/                   # Login, register, forgot password
+│   │   ├── auth/                   # Login, register, forgot password, verify-OTP, reset-password
 │   │   ├── home/                   # Home with recommendations
-│   │   ├── movie/                  # Movie details
+│   │   ├── movie/                  # Movie details + dedicated reviews page
 │   │   ├── search/                 # Search page
 │   │   ├── favorites/              # Favorites list
 │   │   ├── profile/                # User profile
@@ -144,4 +146,4 @@ movie_recommender_web/
 | flutter_svg | ^2.0.17 | SVG rendering |
 | toastification | ^2.3.0 | Toast notifications |
 | http | ^1.2.1 | HTTP client |
-| pretty_http_logger | ^1.0.5 | HTTP request logging |
+| pretty_http_logger | ^1.0.5 | HTTP request logging|

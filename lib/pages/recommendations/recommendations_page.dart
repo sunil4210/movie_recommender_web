@@ -10,11 +10,6 @@ import 'package:movie_recommender_web/theme/app_color.dart';
 import 'package:movie_recommender_web/widgets/movie_card.dart';
 import 'package:movie_recommender_web/widgets/state_widgets.dart';
 
-/// Dedicated tab showing the user's personalized recommendations as a responsive grid.
-///
-/// Always requests User-User Collaborative Filtering from the backend. Movies the user
-/// has already rated are excluded server-side; predictions below 3.5★ are dropped;
-/// the grid is genre-diversified.
 class RecommendationsPage extends ConsumerStatefulWidget {
   const RecommendationsPage({super.key});
 
@@ -23,8 +18,8 @@ class RecommendationsPage extends ConsumerStatefulWidget {
 }
 
 class _RecommendationsPageState extends ConsumerState<RecommendationsPage> {
-  /// Production algorithm — kept as a constant rather than a UI toggle so that
-  /// the frontend's recommendation contract is unambiguous.
+  // Frontend pins user-user CF — backend supports svd/item_item too but those
+  // are evaluation baselines, not the production model.
   static const String _algorithm = 'user_user';
   bool _loading = false;
 

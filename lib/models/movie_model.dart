@@ -7,6 +7,7 @@ class MovieModel {
   final int totalRatings;
   final String? posterUrl;
   final String? blurHash;
+  final String? overview;
 
   const MovieModel({
     required this.id,
@@ -17,9 +18,11 @@ class MovieModel {
     this.totalRatings = 0,
     this.posterUrl,
     this.blurHash,
+    this.overview,
   });
 
-  /// For backwards compatibility with pages using movieId as String
+  /// String form of [id]. Several pages use the movie id as a path param
+  /// (e.g. `/movie/42`) which must be a string for go_router.
   String get movieId => id.toString();
 
   factory MovieModel.fromMap(Map<String, dynamic> map) {
@@ -32,10 +35,12 @@ class MovieModel {
       totalRatings: (map['total_ratings'] as num?)?.toInt() ?? 0,
       posterUrl: map['poster_url'] as String?,
       blurHash: map['blur_hash'] as String?,
+      overview: map['overview'] as String?,
     );
   }
 
-  /// Parse from recommendation endpoint response
+  /// Recommendation rows use a different shape — `movie_id` instead of `id`,
+  /// and `predicted_rating` instead of `average_rating`.
   factory MovieModel.fromRecommendation(Map<String, dynamic> map) {
     return MovieModel(
       id: map['movie_id'] as int,
@@ -44,19 +49,7 @@ class MovieModel {
       avgRating: (map['predicted_rating'] as num?)?.toDouble() ?? 0.0,
       posterUrl: map['poster_url'] as String?,
       blurHash: map['blur_hash'] as String?,
+      overview: map['overview'] as String?,
     );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'title': title,
-      'genres': genres,
-      'year': releaseYear,
-      'average_rating': avgRating,
-      'total_ratings': totalRatings,
-      'poster_url': posterUrl,
-      'blur_hash': blurHash,
-    };
   }
 }

@@ -55,7 +55,7 @@ class AuthService {
   }) async {
     return runCatching<UserModel>(() async {
       final http.Response response = await _client.post(
-        Uri.parse('${ApiConstants.baseUrl}/auth/login'),
+        Uri.parse(ApiConstants.authLogin),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'email': email, 'password': password}),
       );
@@ -82,15 +82,18 @@ class AuthService {
     });
   }
 
-  Future<AsyncResult<UserModel>> registerWithEmail({
+  /// Creates the account. Backend returns 200 with `{email, email_verified:false}`
+  /// and emails a 6-digit OTP. The caller must route to the verify-OTP page
+  /// next — there is no session yet.
+  Future<AsyncResult<void>> registerWithEmail({
     required String email,
     required String password,
     required String firstName,
     required String lastName,
   }) async {
-    return runCatching<UserModel>(() async {
+    return runCatching<void>(() async {
       final http.Response response = await _client.post(
-        Uri.parse('${ApiConstants.baseUrl}/auth/signup'),
+        Uri.parse(ApiConstants.authSignup),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'email': email,
@@ -104,22 +107,101 @@ class AuthService {
         throw AppException.fromStatusCode(
             response.statusCode, _parseError(response.body));
       }
-
-      // Auto-login after signup
-      final loginResult = await signInWithEmail(email: email, password: password);
-
-      return loginResult.when(
-        success: (user) => user,
-        failure: (e) => throw e,
-      );
     });
   }
 
-  Future<AsyncResult<void>> sendPasswordResetEmail(
-      {required String email}) async {
-    // Backend doesn't have this endpoint yet — no-op for now
+  /// Verify the signup OTP. Backend returns a JWT on success; we persist it and
+  /// load the user profile so the app is logged in immediately afterwards.
+  Future<AsyncResult<UserModel>> verifyEmailOtp({
+    required String email,
+    required String code,
+  }) async {
+    return runCatching<UserModel>(() async {
+      final http.Response response = await _client.post(
+        Uri.parse(ApiConstants.authVerifyEmail),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'code': code}),
+      );
+
+      if (response.statusCode != 200) {
+        throw AppException.fromStatusCode(
+            response.statusCode, _parseError(response.body));
+      }
+
+      final Map<String, dynamic> data =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      _token = data['access_token'] as String?;
+
+      if (_token == null || _token!.isEmpty) {
+        throw const AppException(message: 'Verification failed. Please try again.');
+      }
+
+      await _saveToken(_token!);
+
+      final UserModel user = await _fetchCurrentUser();
+      _currentUser = user;
+      return user;
+    });
+  }
+
+  /// Ask the backend to (re-)send an OTP. `purpose` is 'signup' or 'reset'.
+  Future<AsyncResult<void>> resendOtp({
+    required String email,
+    required String purpose,
+  }) async {
     return runCatching<void>(() async {
-      // Placeholder — could be added to backend later
+      final http.Response response = await _client.post(
+        Uri.parse(ApiConstants.authResendOtp),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'purpose': purpose}),
+      );
+
+      if (response.statusCode != 200) {
+        throw AppException.fromStatusCode(
+            response.statusCode, _parseError(response.body));
+      }
+    });
+  }
+
+  /// Request a password reset OTP. Backend always returns 200 (no enumeration).
+  Future<AsyncResult<void>> requestPasswordReset({
+    required String email,
+  }) async {
+    return runCatching<void>(() async {
+      final http.Response response = await _client.post(
+        Uri.parse(ApiConstants.authForgotPassword),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email}),
+      );
+
+      if (response.statusCode != 200) {
+        throw AppException.fromStatusCode(
+            response.statusCode, _parseError(response.body));
+      }
+    });
+  }
+
+  /// Verify the reset OTP and set a new password.
+  Future<AsyncResult<void>> resetPasswordWithOtp({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    return runCatching<void>(() async {
+      final http.Response response = await _client.post(
+        Uri.parse(ApiConstants.authResetPassword),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'email': email,
+          'code': code,
+          'new_password': newPassword,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        throw AppException.fromStatusCode(
+            response.statusCode, _parseError(response.body));
+      }
     });
   }
 
@@ -137,7 +219,7 @@ class AuthService {
       if (gender != null) body['gender'] = gender;
 
       final http.Response response = await _client.put(
-        Uri.parse('${ApiConstants.baseUrl}/auth/profile'),
+        Uri.parse(ApiConstants.authProfile),
         headers: authHeaders,
         body: jsonEncode(body),
       );
@@ -161,7 +243,7 @@ class AuthService {
   }) async {
     return runCatching<void>(() async {
       final http.Response response = await _client.put(
-        Uri.parse('${ApiConstants.baseUrl}/auth/change-password'),
+        Uri.parse(ApiConstants.authChangePassword),
         headers: authHeaders,
         body: jsonEncode({
           'current_password': currentPassword,
@@ -186,7 +268,7 @@ class AuthService {
 
   Future<UserModel> _fetchCurrentUser() async {
     final http.Response response = await _client.get(
-      Uri.parse('${ApiConstants.baseUrl}/auth/me'),
+      Uri.parse(ApiConstants.authMe),
       headers: authHeaders,
     );
 

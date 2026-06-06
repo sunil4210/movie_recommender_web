@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs sed:*)",
+      "Bash(flutter pub:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(find lib/ -type d -empty -delete)",
+      "Bash(python3 -c ':*)",
+      "Bash(curl -sL \"https://files.grouplens.org/datasets/movielens/ml-100k.zip\" -o ml-100k.zip)",
+      "Bash(unzip -q ml-100k.zip)",
+      "Bash(python3:*)",
+      "Bash(brew install:*)",
+      "Bash(pdftotext \"/Users/nerusAlmighty/Development/kd/capstone/NIT3003-Session-06-Guidance-Resource - \\(NIT3003\\) IT Capstone Project 1 - F,SY.pdf\" -)",
+      "Bash(pip3 install:*)",
+      "Bash(unzip -oq ml-100k.zip)",
+      "Bash(flutter run:*)",
+      "Bash(sed -i '' 's/LoginScreen/LoginPage/g; s/register_screen/register_page/g; s/screens\\\\/auth/pages\\\\/auth/g; s/_LoginScreenState/_LoginPageState/g' lib/pages/auth/login_page.dart)",
+      "Bash(sed -i '' 's/RegisterScreen/RegisterPage/g; s/_RegisterScreenState/_RegisterPageState/g' lib/pages/auth/register_page.dart)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(dart pub:*)",
+      "Bash(flutterfire configure:*)",
+      "Bash(flutter build:*)"
+    ]
+  }
+}

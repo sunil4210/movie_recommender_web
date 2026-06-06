@@ -16,6 +16,7 @@ import 'package:movie_recommender_web/widgets/genre_pill.dart';
 import 'package:movie_recommender_web/widgets/movie_card.dart';
 import 'package:movie_recommender_web/widgets/section_header.dart';
 import 'package:movie_recommender_web/widgets/state_widgets.dart';
+import 'package:movie_recommender_web/widgets/trailer_dialog.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -127,21 +128,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                         const SizedBox(height: 48),
                       ],
 
-                      // Popular Movies
-                      const SectionHeader(title: 'Popular Movies'),
+                      // Top Rated Movies (highest average rating with min 20 ratings)
+                      const SectionHeader(title: 'Top Rated Movies'),
                       const SizedBox(height: 16),
                       _buildHorizontalMovieList(
                         movies: movieState.popularMovies,
-                        cardWidth: cardWidth,
-                        cardHeight: cardHeight,
-                      ),
-                      const SizedBox(height: 48),
-
-                      // Trending Now
-                      const SectionHeader(title: 'Trending Now'),
-                      const SizedBox(height: 16),
-                      _buildHorizontalMovieList(
-                        movies: movieState.trendingMovies,
                         cardWidth: cardWidth,
                         cardHeight: cardHeight,
                       ),
@@ -151,12 +142,12 @@ class _HomePageState extends ConsumerState<HomePage> {
                       _buildGenreChips(),
                       const SizedBox(height: 48),
 
-                      // New Arrivals
-                      if (movieState.newArrivals.isNotEmpty) ...[
-                        const SectionHeader(title: 'New Arrivals'),
+                      // Trending Now (most recent rating activity)
+                      if (movieState.trendingMovies.isNotEmpty) ...[
+                        const SectionHeader(title: 'Trending Now'),
                         const SizedBox(height: 16),
                         _buildHorizontalMovieList(
-                          movies: movieState.newArrivals,
+                          movies: movieState.trendingMovies,
                           cardWidth: cardWidth,
                           cardHeight: cardHeight,
                         ),
@@ -314,41 +305,27 @@ class _HomePageState extends ConsumerState<HomePage> {
                     spacing: 12,
                     runSpacing: 8,
                     children: [
-                      ElevatedButton.icon(
-                        onPressed: () => context.push('/movie/${heroMovie.movieId}'),
-                        icon: const Icon(Icons.info_outline, size: 16),
-                        label: const Text('MORE INFO'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.5,
-                          ),
+                      _HeroButton(
+                        icon: Icons.play_arrow_rounded,
+                        label: 'WATCH TRAILER',
+                        onTap: () => TrailerDialog.show(
+                          context,
+                          movieId: heroMovie.id,
+                          movieTitle: heroMovie.title,
                         ),
+                        primary: true,
                       ),
-                      OutlinedButton.icon(
-                        onPressed: () => context.go(AppRoutes.favorites),
-                        icon: const Icon(Icons.add, size: 16),
-                        label: const Text('MY LIST'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: const BorderSide(color: AppColors.grey400),
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          textStyle: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
+                      _HeroButton(
+                        icon: Icons.info_outline,
+                        label: 'MORE INFO',
+                        onTap: () => context.go('/movie/${heroMovie.movieId}'),
+                        primary: false,
+                      ),
+                      _HeroButton(
+                        icon: Icons.add,
+                        label: 'MY LIST',
+                        onTap: () => context.go(AppRoutes.favorites),
+                        primary: false,
                       ),
                     ],
                   ),
@@ -420,7 +397,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             movie: movie,
             width: cardWidth,
             height: cardHeight,
-            onTap: () => context.push('/movie/${movie.movieId}'),
+            onTap: () => context.go('/movie/${movie.movieId}'),
           );
         },
       ),
@@ -495,6 +472,74 @@ class _HomePageState extends ConsumerState<HomePage> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _HeroButton extends StatefulWidget {
+  const _HeroButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.primary,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool primary;
+
+  @override
+  State<_HeroButton> createState() => _HeroButtonState();
+}
+
+class _HeroButtonState extends State<_HeroButton> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color baseBg = widget.primary
+        ? AppColors.primary
+        : Colors.white.withValues(alpha: 0.12);
+    final Color hoverBg = widget.primary
+        ? AppColors.primary.withValues(alpha: 0.9)
+        : Colors.white.withValues(alpha: 0.22);
+    final Color border = widget.primary
+        ? AppColors.primary
+        : Colors.white.withValues(alpha: 0.3);
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+          decoration: BoxDecoration(
+            color: _hovering ? hoverBg : baseBg,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(widget.icon, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                widget.label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

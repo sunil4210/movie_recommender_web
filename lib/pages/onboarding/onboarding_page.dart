@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +9,7 @@ import 'package:movie_recommender_web/notifiers/auth/auth_notifier.dart';
 import 'package:movie_recommender_web/notifiers/auth/auth_state.dart';
 import 'package:movie_recommender_web/notifiers/movie/movie_notifier.dart';
 import 'package:movie_recommender_web/notifiers/movie/movie_state.dart';
+import 'package:movie_recommender_web/services/service_providers.dart';
 import 'package:movie_recommender_web/services/toast_service.dart';
 import 'package:movie_recommender_web/theme/app_color.dart';
 import 'package:movie_recommender_web/widgets/movie_poster.dart';
@@ -22,7 +25,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   final Set<int> _likedMovieIds = {};
   bool _submitting = false;
 
-  static const int _minLikes = 5;
+  static const int _minLikes = 3;
 
   @override
   void initState() {
@@ -42,44 +45,92 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
     setState(() => _submitting = true);
 
     final int userId = authState.user!.id;
-    final db = ref.read(databaseServiceProvider);
+    final ratingService = ref.read(ratingServiceProvider);
 
-    // Submit ratings for all liked movies (5.0 = liked)
+    // One bad request shouldn't break onboarding — count successes and only
+    // bail when *every* rating submit failed.
+    int succeeded = 0;
     for (final int movieId in _likedMovieIds) {
-      await db.submitRating(userId: userId, movieId: movieId, rating: 5.0);
-    }
-
-    // Load recommendations with new ratings
-    await ref.read(movieNotifierProvider.notifier).loadRecommendations(userId);
-
-    if (mounted) {
-      ToastService.instance.show(
-        context: context,
-        title: 'Great picks! Here are your recommendations',
-        toastType: ToastType.success,
+      final result = await ratingService.submit(
+        userId: userId,
+        movieId: movieId,
+        rating: 5.0,
       );
-      context.go(AppRoutes.home);
+      result.when(success: (_) => succeeded++, failure: (_) {});
     }
+
+    if (succeeded == 0) {
+      if (mounted) {
+        setState(() => _submitting = false);
+        ToastService.instance.show(
+          context: context,
+          title: "Couldn't save your picks. Check connection and try again.",
+          toastType: ToastType.error,
+        );
+      }
+      return;
+    }
+
+    // Pull fresh user (totalRatings > 0 now) so the router stops redirecting
+    // back to onboarding, then warm the recommendations cache before navigating.
+    await ref.read(authNotifierProvider.notifier).refreshUser();
+    await ref
+        .read(movieNotifierProvider.notifier)
+        .loadRecommendations(userId, algorithm: 'user_user');
+
+    if (!mounted) return;
+    ToastService.instance.show(
+      context: context,
+      title: 'Great picks! Here are your recommendations',
+      toastType: ToastType.success,
+    );
+    context.go(AppRoutes.home);
+  }
+
+  Future<void> _skip() async {
+    // Even when skipping, refresh the user so the router doesn't bounce them
+    // back here on every navigation. The cold-start path returns popular
+    // movies as a placeholder until they rate something.
+    await ref.read(authNotifierProvider.notifier).refreshUser();
+    if (!mounted) return;
+    context.go(AppRoutes.home);
   }
 
   @override
   Widget build(BuildContext context) {
     final MovieState movieState = ref.watch(movieNotifierProvider);
+    final AuthState authState = ref.watch(authNotifierProvider);
     final int remaining = _minLikes - _likedMovieIds.length;
 
-    // Use popular + trending as onboarding pool
+    // Broaden the pool from popular+trending (~20 items, same for everyone) to
+    // the full catalog so different users (and the same user across visits) see
+    // varied options. Popular and trending stay at the front as "safe" picks,
+    // then the rest of the catalog is shuffled with a per-user seed so the
+    // order is stable across rebuilds within a session.
     final List<MovieModel> moviePool = [
       ...movieState.popularMovies,
       ...movieState.trendingMovies,
+      ...movieState.allMovies,
     ];
 
-    // Deduplicate
+    // Deduplicate while preserving the leading popular/trending order.
     final Set<int> seen = {};
-    final List<MovieModel> movies = moviePool.where((MovieModel m) {
+    final List<MovieModel> deduped = moviePool.where((MovieModel m) {
       if (seen.contains(m.id)) return false;
       seen.add(m.id);
       return true;
     }).toList();
+
+    // Seed the shuffle by user id so each user gets a different rotation but
+    // the order doesn't jump around on every setState.
+    final int seed = authState.user?.id ?? DateTime.now().millisecondsSinceEpoch;
+    final List<MovieModel> remainder = deduped.sublist(
+      deduped.length > 6 ? 6 : deduped.length,
+    )..shuffle(Random(seed));
+    final List<MovieModel> movies = [
+      ...deduped.take(deduped.length > 6 ? 6 : deduped.length),
+      ...remainder,
+    ];
 
     return Scaffold(
       backgroundColor: const Color(0xFF0A0A0A),
@@ -90,19 +141,31 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
             padding: const EdgeInsets.fromLTRB(32, 48, 32, 24),
             child: Column(
               children: [
-                const Text(
-                  'What movies do you like?',
-                  style: TextStyle(
+                Text(
+                  authState.user?.firstName != null &&
+                          authState.user!.firstName!.isNotEmpty
+                      ? 'Welcome, ${authState.user!.firstName}!'
+                      : 'Welcome to CineMatch',
+                  style: const TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w700,
                     color: Colors.white,
                   ),
                 ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Pick a few movies you like so we can tailor your feed.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
                 const SizedBox(height: 8),
                 Text(
                   remaining > 0
-                      ? 'Pick at least $_minLikes movies to get personalized recommendations. $remaining more to go.'
-                      : 'Looking good! You can keep adding or continue.',
+                      ? '$remaining more to unlock personalised picks  ·  takes ~20 sec'
+                      : "All set — tap CONTINUE or pick a few more if you'd like.",
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontSize: 14,
@@ -181,14 +244,25 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
             ),
             child: Row(
               children: [
-                // Skip button
-                TextButton(
-                  onPressed: () => context.go(AppRoutes.home),
+                // Skip button — equal weight with CONTINUE so users who want
+                // to explore first don't feel trapped.
+                OutlinedButton(
+                  onPressed: _submitting ? null : _skip,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.textSecondary,
+                    side: const BorderSide(color: Color(0xFF3A3A3A)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
                   child: const Text(
-                    'Skip for now',
+                    'BROWSE FIRST',
                     style: TextStyle(
-                      color: AppColors.textSecondary,
                       fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.5,
                     ),
                   ),
                 ),

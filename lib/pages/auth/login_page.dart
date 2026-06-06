@@ -50,8 +50,25 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
     ref.listen<AuthState>(authNotifierProvider, (AuthState? previous, AuthState next) {
       if (next.status == AuthStatus.error && next.errorMessage != null) {
-        ToastService.instance.show(context: context, title: next.errorMessage!, toastType: ToastType.error);
+        final String msg = next.errorMessage!;
         ref.read(authNotifierProvider.notifier).clearError();
+
+        // Backend returns 403 with this detail when the account exists but
+        // hasn't completed signup OTP — bounce the user into the verify flow
+        // and trigger a fresh code rather than dead-ending on a toast.
+        if (msg.toLowerCase().contains('email not verified')) {
+          final String email = _emailController.text.trim();
+          ref.read(authNotifierProvider.notifier).resendOtp(email: email, purpose: 'signup');
+          ToastService.instance.show(
+            context: context,
+            title: 'Please verify your email. A new code was sent.',
+            toastType: ToastType.info,
+          );
+          context.go('${AppRoutes.verifyOtp}?email=${Uri.encodeQueryComponent(email)}&purpose=signup');
+          return;
+        }
+
+        ToastService.instance.show(context: context, title: msg, toastType: ToastType.error);
       }
 
       if (next.isAuthenticated) {
@@ -139,11 +156,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             prefixIcon: const Icon(Icons.lock_outlined, color: AppColors.grey500, size: 20),
             suffixIcon: IconButton(
               onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-              icon: SvgIcon(
-                _obscurePassword ? SvgPaths.eyeOff : SvgPaths.eye,
-                size: 20,
-                color: AppColors.grey500,
-              ),
+              icon: SvgIcon(_obscurePassword ? SvgPaths.eyeOff : SvgPaths.eye, size: 20, color: AppColors.grey500),
             ),
             validator: (String? value) {
               if (value == null || value.isEmpty) return 'Password is required';
