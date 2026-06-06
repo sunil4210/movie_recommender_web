@@ -89,8 +89,7 @@ class _MovieReviewsPageState extends ConsumerState<MovieReviewsPage> {
     _fetchedMovie = true;
     final int? idInt = int.tryParse(widget.movieId);
     if (idInt == null) return;
-    final result =
-        await ref.read(movieServiceProvider).getById(idInt);
+    final result = await ref.read(movieServiceProvider).getById(idInt);
     if (!mounted) return;
     result.when(
       success: (MovieModel? m) {
@@ -107,7 +106,9 @@ class _MovieReviewsPageState extends ConsumerState<MovieReviewsPage> {
     final int? pinUserId = ref.read(authNotifierProvider).user?.id;
 
     setState(() => _loading = true);
-    final result = await ref.read(ratingServiceProvider).reviewsForMovie(
+    final result = await ref
+        .read(ratingServiceProvider)
+        .reviewsForMovie(
           idInt,
           limit: 1000,
           sort: _sort.apiValue,
@@ -199,33 +200,35 @@ class _MovieReviewsPageState extends ConsumerState<MovieReviewsPage> {
                         SafeArea(
                           child: Padding(
                             padding: const EdgeInsets.only(top: 12, bottom: 24),
-                            child: CircleButton(
-                              icon: Icons.arrow_back,
-                              onTap: () => context.canPop()
-                                  ? context.pop()
-                                  : context.go('/movie/${widget.movieId}'),
+                            child: Row(
+                              children: [
+                                CircleButton(
+                                  icon: Icons.arrow_back,
+                                  onTap: () => context.canPop()
+                                      ? context.pop()
+                                      : context.go('/movie/${widget.movieId}'),
+                                ),
+                                const Spacer(),
+                              ],
                             ),
                           ),
                         ),
                         if (movie != null)
                           isWide
                               ? Row(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     _buildPoster(movie, 220, 330),
                                     const SizedBox(width: 40),
-                                    Expanded(
-                                        child: _buildMovieSummary(movie)),
+                                    Expanded(child: _buildMovieSummary(movie)),
                                   ],
                                 )
                               : Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Center(
-                                        child:
-                                            _buildPoster(movie, 180, 270)),
+                                      child: _buildPoster(movie, 180, 270),
+                                    ),
                                     const SizedBox(height: 24),
                                     _buildMovieSummary(movie),
                                   ],
@@ -233,14 +236,10 @@ class _MovieReviewsPageState extends ConsumerState<MovieReviewsPage> {
                         else
                           const SizedBox(
                             height: 200,
-                            child:
-                                Center(child: CircularProgressIndicator()),
+                            child: Center(child: CircularProgressIndicator()),
                           ),
                         const SizedBox(height: 40),
-                        Container(
-                          height: 1,
-                          color: const Color(0xFF1A1A1A),
-                        ),
+                        Container(height: 1, color: const Color(0xFF1A1A1A)),
                         const SizedBox(height: 24),
                         _buildReviewsHeader(),
                         const SizedBox(height: 20),
@@ -334,7 +333,10 @@ class _MovieReviewsPageState extends ConsumerState<MovieReviewsPage> {
           children: [
             if (movie.releaseYear != null) ...[
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   border: Border.all(color: AppColors.grey400),
                   borderRadius: BorderRadius.circular(4),
@@ -351,8 +353,11 @@ class _MovieReviewsPageState extends ConsumerState<MovieReviewsPage> {
               const SizedBox(width: 16),
             ],
             if (movie.avgRating > 0) ...[
-              const Icon(Icons.star_rounded,
-                  color: AppColors.ratingFilled, size: 22),
+              const Icon(
+                Icons.star_rounded,
+                color: AppColors.ratingFilled,
+                size: 22,
+              ),
               const SizedBox(width: 4),
               Text(
                 movie.avgRating.toStringAsFixed(1),
@@ -414,7 +419,11 @@ class _MovieReviewsPageState extends ConsumerState<MovieReviewsPage> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.forum_outlined, size: 16, color: AppColors.primary),
+              const Icon(
+                Icons.forum_outlined,
+                size: 16,
+                color: AppColors.primary,
+              ),
               const SizedBox(width: 6),
               Text(
                 _initialLoadDone ? '${_reviews.length} reviews' : '— reviews',
@@ -444,8 +453,10 @@ class _MovieReviewsPageState extends ConsumerState<MovieReviewsPage> {
       child: DropdownButtonHideUnderline(
         child: DropdownButton<ReviewSort>(
           value: _sort,
-          icon: const Icon(Icons.keyboard_arrow_down,
-              color: AppColors.textSecondary),
+          icon: const Icon(
+            Icons.keyboard_arrow_down,
+            color: AppColors.textSecondary,
+          ),
           dropdownColor: const Color(0xFF1A1A1A),
           style: const TextStyle(color: Colors.white, fontSize: 13),
           onChanged: (ReviewSort? v) {
