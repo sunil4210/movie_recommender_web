@@ -1,47 +1,50 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:movie_recommender_web/core/exceptions/async_result.dart';
 import 'package:movie_recommender_web/models/movie_model.dart';
-import 'package:movie_recommender_web/notifiers/auth/auth_notifier.dart';
 import 'package:movie_recommender_web/notifiers/movie/movie_state.dart';
-import 'package:movie_recommender_web/services/database_service.dart';
+import 'package:movie_recommender_web/services/movie_service.dart';
+import 'package:movie_recommender_web/services/recommendation_service.dart';
+import 'package:movie_recommender_web/services/service_providers.dart';
 
-/// Riverpod notifier that owns all movie-related state: catalog, popular, trending,
-/// new arrivals, recommendations, and the current search/filter view.
+/// State holder for the movie catalog, the home-page rails (popular / trending /
+/// new arrivals), the current search results, and recommendations.
 ///
-/// One instance per app — held by `movieNotifierProvider`. UI pages read from
-/// `MovieState` and call the methods below to fetch or filter data.
+/// All HTTP is delegated to [MovieService] / [RecommendationService] — this
+/// class only manages state and the cross-rail orchestration.
 class MovieNotifier extends StateNotifier<MovieState> {
-  final DatabaseService _databaseService;
+  MovieNotifier(this._movieService, this._recommendationService)
+      : super(const MovieState());
 
-  MovieNotifier(this._databaseService) : super(const MovieState());
+  final MovieService _movieService;
+  final RecommendationService _recommendationService;
 
-  /// Fetch the full movie catalog plus the popular/trending rails in parallel.
-  /// On error, popular/trending fall back to local sorts of the catalog so the
-  /// home page is never empty.
+  int _searchRequestId = 0;
+
+  /// Hydrate the catalog + the popular/trending rails in parallel. If popular
+  /// or trending fail, we derive them from the catalog so the home page never
+  /// renders empty rails.
   Future<void> loadMovies() async {
     state = state.copyWith(status: MovieStatus.loading);
 
-    // Fetch all movies, popular, and trending in parallel
     final results = await Future.wait([
-      _databaseService.getMovies(perPage: 200),
-      _databaseService.getPopularMovies(limit: 10),
-      _databaseService.getTrendingMovies(limit: 10),
+      _movieService.list(perPage: 200),
+      _movieService.popular(limit: 10),
+      _movieService.trending(limit: 10),
     ]);
 
-    final allResult = results[0];
-    final popularResult = results[1];
-    final trendingResult = results[2];
+    final AsyncResult<List<MovieModel>> allResult = results[0];
+    final AsyncResult<List<MovieModel>> popularResult = results[1];
+    final AsyncResult<List<MovieModel>> trendingResult = results[2];
 
     allResult.when(
       success: (List<MovieModel> movies) {
-        // New arrivals = latest release year
         final List<MovieModel> newArrivals = List<MovieModel>.from(movies)
           ..sort((a, b) => (b.releaseYear ?? 0).compareTo(a.releaseYear ?? 0));
 
-        List<MovieModel> popular = [];
+        List<MovieModel> popular = const [];
         popularResult.when(
-          success: (data) => popular = data,
+          success: (List<MovieModel> data) => popular = data,
           failure: (_) {
-            // Fallback: sort all movies by rating
             popular = (List<MovieModel>.from(movies)
                   ..sort((a, b) => b.avgRating.compareTo(a.avgRating)))
                 .take(10)
@@ -49,34 +52,16 @@ class MovieNotifier extends StateNotifier<MovieState> {
           },
         );
 
-        List<MovieModel> trending = [];
+        List<MovieModel> trending = const [];
         trendingResult.when(
-          success: (data) => trending = data,
+          success: (List<MovieModel> data) => trending = data,
           failure: (_) {
             trending = (List<MovieModel>.from(movies)
-                  ..sort(
-                      (a, b) => b.totalRatings.compareTo(a.totalRatings)))
+                  ..sort((a, b) => b.totalRatings.compareTo(a.totalRatings)))
                 .take(10)
                 .toList();
           },
         );
-
-        final String? activeGenre = state.selectedGenre;
-        final String activeQuery = state.searchQuery;
-        List<MovieModel> results = movies;
-        if (activeGenre != null && activeGenre != 'All') {
-          results = movies
-              .where((MovieModel m) => m.genres.any(
-                    (String g) => g.toLowerCase() == activeGenre.toLowerCase(),
-                  ))
-              .toList();
-        } else if (activeQuery.isNotEmpty) {
-          final String lower = activeQuery.toLowerCase();
-          results = movies.where((MovieModel movie) {
-            return movie.title.toLowerCase().contains(lower) ||
-                movie.genres.any((String g) => g.toLowerCase().contains(lower));
-          }).toList();
-        }
 
         state = state.copyWith(
           status: MovieStatus.loaded,
@@ -84,7 +69,11 @@ class MovieNotifier extends StateNotifier<MovieState> {
           popularMovies: popular,
           trendingMovies: trending,
           newArrivals: newArrivals.take(10).toList(),
-          searchResults: results,
+          searchResults: _filterLocally(
+            movies,
+            state.searchQuery,
+            state.selectedGenre,
+          ),
         );
       },
       failure: (exception) {
@@ -96,80 +85,79 @@ class MovieNotifier extends StateNotifier<MovieState> {
     );
   }
 
-  /// Fetch personalized recommendations for [userId].
-  ///
-  /// The frontend always passes `algorithm: 'user_user'`. The default parameter is
-  /// kept as 'svd' so ad-hoc curl/test calls without a query param still work,
-  /// matching the backend's default.
-  ///
-  /// If the backend call fails (network/cold-start/etc.), recommendations fall back
-  /// to whatever is in `popularMovies` so the UI never shows an empty rail.
+  /// Pull personalised recommendations. Falls back to the popular rail if the
+  /// backend call fails so the UI never shows an empty "Recommended" section.
   Future<void> loadRecommendations(int userId, {String algorithm = 'svd'}) async {
-    final result = await _databaseService.getRecommendations(userId, algorithm: algorithm);
+    final result =
+        await _recommendationService.forUser(userId, algorithm: algorithm);
     result.when(
       success: (recs) => state = state.copyWith(recommendations: recs),
-      failure: (_) {
-        state = state.copyWith(recommendations: state.popularMovies);
-      },
+      failure: (_) =>
+          state = state.copyWith(recommendations: state.popularMovies),
     );
   }
 
-  /// Filter the catalog client-side by title or genre substring.
-  /// Empty query restores the full catalog into `searchResults`.
-  void searchMovies(String query) {
-    final String lowerQuery = query.toLowerCase();
+  Future<void> searchMovies(String query) async {
     state = state.copyWith(searchQuery: query);
-
-    if (query.isEmpty) {
-      state = state.copyWith(searchResults: state.allMovies);
-      return;
-    }
-
-    final List<MovieModel> results =
-        state.allMovies.where((MovieModel movie) {
-      return movie.title.toLowerCase().contains(lowerQuery) ||
-          movie.genres
-              .any((String g) => g.toLowerCase().contains(lowerQuery));
-    }).toList();
-
-    state = state.copyWith(searchResults: results);
+    await _runSearch();
   }
 
-  /// Filter the catalog to movies whose genre list contains [genre] (case-insensitive).
-  /// Pass `null` or `'All'` to clear the filter and show every movie.
-  /// Match is "any of the movie's genres equals [genre]" — so a movie tagged
-  /// `Action|Comedy|Drama` matches when filtering by any one of those three.
-  void filterByGenre(String? genre) {
+  Future<void> filterByGenre(String? genre) async {
     state = state.copyWith(selectedGenre: genre);
-
-    if (genre == null || genre == 'All') {
-      state = state.copyWith(searchResults: state.allMovies);
-      return;
-    }
-
-    final List<MovieModel> filtered = state.allMovies
-        .where((MovieModel m) => m.genres.any(
-              (String g) => g.toLowerCase() == genre.toLowerCase(),
-            ))
-        .toList();
-
-    state = state.copyWith(searchResults: filtered);
+    await _runSearch();
   }
 
-  void setRecommendations(List<MovieModel> recs) {
-    state = state.copyWith(recommendations: recs);
+  /// Hits the backend search endpoint so we get token-aware ranking. A stale
+  /// in-flight response is dropped via `_searchRequestId` so fast typing can't
+  /// race a slower query into the UI.
+  Future<void> _runSearch() async {
+    final String query = state.searchQuery.trim();
+    final String? raw = state.selectedGenre;
+    final String? genre = (raw == null || raw == 'All') ? null : raw;
+    final int requestId = ++_searchRequestId;
+
+    final AsyncResult<List<MovieModel>> result = await _movieService.list(
+      searchQuery: query.isEmpty ? null : query,
+      genre: genre,
+      perPage: 60,
+    );
+
+    if (requestId != _searchRequestId) return;
+
+    result.when(
+      success: (movies) => state = state.copyWith(searchResults: movies),
+      failure: (_) => state = state.copyWith(
+        searchResults: _filterLocally(state.allMovies, query, genre),
+      ),
+    );
+  }
+
+  /// Offline fallback filter — used when the backend search fails so the page
+  /// still shows something derived from the catalog already in memory.
+  static List<MovieModel> _filterLocally(
+    List<MovieModel> source,
+    String query,
+    String? genre,
+  ) {
+    final String lower = query.toLowerCase();
+    Iterable<MovieModel> base = source;
+    if (genre != null && genre != 'All') {
+      base = base.where((m) =>
+          m.genres.any((g) => g.toLowerCase() == genre.toLowerCase()));
+    }
+    if (lower.isNotEmpty) {
+      base = base.where((m) =>
+          m.title.toLowerCase().contains(lower) ||
+          m.genres.any((g) => g.toLowerCase().contains(lower)));
+    }
+    return base.toList();
   }
 }
 
-final Provider<DatabaseService> databaseServiceProvider =
-    Provider<DatabaseService>(
-  (Ref ref) {
-    final authService = ref.read(authServiceProvider);
-    return DatabaseService(getHeaders: () => authService.authHeaders);
-  },
-);
-
 final StateNotifierProvider<MovieNotifier, MovieState> movieNotifierProvider =
     StateNotifierProvider<MovieNotifier, MovieState>(
-  (Ref ref) => MovieNotifier(ref.read(databaseServiceProvider)),
+  (Ref ref) => MovieNotifier(
+    ref.read(movieServiceProvider),
+    ref.read(recommendationServiceProvider),
+  ),
 );

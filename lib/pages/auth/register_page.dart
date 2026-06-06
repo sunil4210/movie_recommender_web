@@ -46,15 +46,28 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
-    await ref
+    final String email = _emailController.text.trim();
+    final bool ok = await ref
         .read(authNotifierProvider.notifier)
         .register(
-          email: _emailController.text.trim(),
+          email: email,
           password: _passwordController.text,
           firstName: _firstNameController.text.trim(),
           lastName: _lastNameController.text.trim(),
         );
-    if (mounted) setState(() => _isLoading = false);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (ok) {
+      ToastService.instance.show(
+        context: context,
+        title: 'Verification code sent to your email.',
+        toastType: ToastType.success,
+      );
+      context.go(
+        '${AppRoutes.verifyOtp}?email=${Uri.encodeQueryComponent(email)}&purpose=signup',
+      );
+    }
   }
 
   @override
@@ -65,15 +78,6 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       if (next.status == AuthStatus.error && next.errorMessage != null) {
         ToastService.instance.show(context: context, title: next.errorMessage!, toastType: ToastType.error);
         ref.read(authNotifierProvider.notifier).clearError();
-      }
-
-      if (next.isAuthenticated) {
-        ToastService.instance.show(
-          context: context,
-          title: 'Account created successfully!',
-          toastType: ToastType.success,
-        );
-        context.go(AppRoutes.home);
       }
     });
 

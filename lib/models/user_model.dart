@@ -51,9 +51,6 @@ class UserModel {
     return email.isNotEmpty ? email[0].toUpperCase() : 'U';
   }
 
-  /// For backwards compatibility with pages using userId as String
-  String get userId => id.toString();
-
   factory UserModel.fromMap(Map<String, dynamic> map) {
     return UserModel(
       id: map['id'] as int,
@@ -67,43 +64,6 @@ class UserModel {
       createdAt: map['created_at'] != null
           ? DateTime.tryParse(map['created_at'] as String)
           : null,
-    );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'email': email,
-      'first_name': firstName,
-      'last_name': lastName,
-      'age': age,
-      'gender': gender,
-      'total_ratings': totalRatings,
-      'favorite_genres': favoriteGenres,
-    };
-  }
-
-  UserModel copyWith({
-    int? id,
-    String? email,
-    String? firstName,
-    String? lastName,
-    int? age,
-    String? gender,
-    int? totalRatings,
-    List<String>? favoriteGenres,
-    DateTime? createdAt,
-  }) {
-    return UserModel(
-      id: id ?? this.id,
-      email: email ?? this.email,
-      firstName: firstName ?? this.firstName,
-      lastName: lastName ?? this.lastName,
-      age: age ?? this.age,
-      gender: gender ?? this.gender,
-      totalRatings: totalRatings ?? this.totalRatings,
-      favoriteGenres: favoriteGenres ?? this.favoriteGenres,
-      createdAt: createdAt ?? this.createdAt,
     );
   }
 }
